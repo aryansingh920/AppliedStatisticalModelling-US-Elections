@@ -105,21 +105,22 @@ m_rand_slope2 <- bam(
   discrete = TRUE
 )
 
-# Weighted binary outcome model (GOP majority)
+# Binary outcome model (GOP majority) without weights
 m_binary2 <- bam(
   rep_majority ~ s(depr_prop_std, k=15) + white_prop_std + s(STNAME, bs="re"),
   data = uv,
   family = binomial(link="logit"),
-  weights = total_votes,  # Weight by county size
+  # Removed weights to maintain proper county-level interpretation
   discrete = TRUE
 )
 
 # Check if k=15 is adequate for binary model
 gam_check_binary <- gam.check(m_binary2)
 
-# Advanced interaction model - smooth interaction between depression and race
+# Advanced interaction model with proper main effects + interaction
 m_interaction2 <- bam(
-  cbind(GOP_votes, DEM_votes) ~ s(depr_prop_std, white_prop_std, k=10) + s(STNAME, bs="re"),
+  cbind(GOP_votes, DEM_votes) ~ depr_prop_std + white_prop_std + 
+    ti(depr_prop_std, white_prop_std, k=10) + s(STNAME, bs="re"),
   data = uv,
   family = binomial(link="logit"),
   discrete = TRUE
@@ -181,17 +182,18 @@ if(!use_quasi) {
 }
 
 # --- 6. Extract random slopes for state selection ---
-# Get random slopes from the model
+# Initialize slope_data to ensure it always exists
+slope_data <- data.frame(state=character(), effect=numeric(), stringsAsFactors=FALSE)
+
+# Extract the random slope coefficients properly from GAM model
 rand_slopes <- NULL
 tryCatch({
-  rand_slopes <- ranef(m_rand_slope2)
-  # Process the random effects
-  if(!is.null(rand_slopes)) {
-    # Find the column with random slopes (should be the second one, for by=depr_prop_std)
-    slope_col <- ifelse(ncol(rand_slopes) > 1, 2, 1)
+  # Extract the random slope coefficients
+  idx <- grep("STNAME:depr_prop_std", names(coef(m_rand_slope2)))
+  if(length(idx) > 0) {
     slope_data <- data.frame(
-      state = rownames(rand_slopes),
-      effect = rand_slopes[,slope_col],
+      state = gsub("s\\(STNAME\\):depr_prop_std\\.(.*)", "\\1", names(coef(m_rand_slope2))[idx]),
+      effect = coef(m_rand_slope2)[idx],
       stringsAsFactors = FALSE
     )
     
@@ -208,7 +210,7 @@ tryCatch({
     # Remove duplicates
     meaningful_states <- unique(meaningful_states)
   } else {
-    # Fallback to random selection if ranef() fails
+    # Fallback to random selection if no coefficients found
     meaningful_states <- sample(levels(uv$STNAME), min(9, length(levels(uv$STNAME))))
   }
 }, error = function(e) {
@@ -218,10 +220,8 @@ tryCatch({
 })
 
 # If random slopes couldn't be extracted, use a simple approach
-if(is.null(rand_slopes)) {
+if(is.null(rand_slopes) && !exists("meaningful_states")) {
   # Create a simple linear model for each state and extract slopes
-  slope_data <- data.frame(state=character(), effect=numeric(), stringsAsFactors=FALSE)
-  
   for(state in levels(uv$STNAME)) {
     subset_data <- subset(uv, STNAME == state)
     if(nrow(subset_data) > 5) {  # Only fit if enough data
@@ -274,9 +274,30 @@ newd$lower95 <- plogis(pr$fit - 1.96*pr$se.fit)
 # Extract effect size and p-value for annotation
 if (best_model_name %in% c("m_base2", "m_fixed2")) {
   # For models with linear depression effect
-  effect_size <- round(coef(best_model)["depr_prop_std"] * 100, 2) # Convert to percentage points
-  p_value <- summary(best_model)$p.table["depr_prop_std", "Pr(>|z|)"]
-  effect_annotation <- sprintf("Effect: %.2f pp per SD in depression (p = %.4f)", effect_size, p_value)
+  effect_size <- coef(best_model)["depr_prop_std"] 
+  effect_se <- summary(best_model)$p.table["depr_prop_std", "Std. Error"]
+  ci_lower <- effect_size - 1.96 * effect_se
+  ci_upper <- effect_size + 1.96 * effect_se
+  
+  # Convert to percentage points for interpretation
+  effect_size_pp <- round(effect_size * 100, 2)
+  ci_lower_pp <- round(ci_lower * 100, 2)
+  ci_upper_pp <- round(ci_upper * 100, 2)
+  
+  effect_annotation <- sprintf("Effect: %.2f pp per SD in depression (95%% CI: %.2f to %.2f)", 
+                               effect_size_pp, ci_lower_pp, ci_upper_pp)
+  
+  # Calculate odds ratio and CI for reporting
+  or <- exp(effect_size)
+  or_lower <- exp(ci_lower)
+  or_upper <- exp(ci_upper)
+  
+  or_summary <- sprintf("Odds Ratio: %.3f (95%% CI: %.3f to %.3f)", 
+                        or, or_lower, or_upper)
+  
+  cat("Depression Effect Summary:\n")
+  cat(effect_annotation, "\n")
+  cat(or_summary, "\n")
 } else {
   # For models with smooth depression effect
   smooth_p <- summary(best_model)$s.table["s(depr_prop_std)", "p-value"]
@@ -373,7 +394,7 @@ p_interaction <- ggplot(interaction_grid, aes(x=depr_pct, y=white_pct, fill=fit)
   geom_tile() +
   scale_fill_viridis(name="Predicted\nTrump Vote %") +
   labs(
-    title="Smooth Interaction Between Depression and Race on Trump Vote %",
+    title="Interaction Between Depression and Race on Trump Vote %",
     x="County Depression Rate (%)",
     y="White Population (%)"
   ) +
@@ -383,7 +404,7 @@ p_interaction <- ggplot(interaction_grid, aes(x=depr_pct, y=white_pct, fill=fit)
     axis.title = element_text(face="bold")
   )
 
-# --- 10. Create weighted binary outcome plot ---
+# --- 10. Create binary outcome plot ---
 # Generate predictions for binary model
 newd_binary <- data.frame(
   depr_prop_std = seq(min(uv$depr_prop_std), max(uv$depr_prop_std), length=100),
@@ -405,7 +426,7 @@ p_binary <- ggplot(newd_binary, aes(x=depr_pct, y=fit)) +
   geom_line(size=1, color="red") +
   labs(
     title="Probability of Republican Majority by Depression Rate",
-    subtitle="Weighted by county total votes",
+    subtitle="County-level unweighted analysis",
     x="County Depression Rate (%)",
     y="Probability of GOP Majority"
   ) +
@@ -520,6 +541,53 @@ ggsave("state_effects.png", p_slopes, width=8, height=6)
 ggsave("interaction_effect.png", p_interaction, width=8, height=6)
 ggsave("binary_outcome.png", p_binary, width=8, height=6)
 ggsave("residual_diagnostics.png", residual_grid, width=10, height=8)
+
+# Extract and save key effect size information for reporting
+if (best_model_name %in% c("m_base2", "m_fixed2")) {
+  # For models with linear depression effect
+  effect_size <- coef(best_model)["depr_prop_std"] 
+  effect_se <- summary(best_model)$p.table["depr_prop_std", "Std. Error"]
+  p_value <- summary(best_model)$p.table["depr_prop_std", "Pr(>|z|)"]
+  ci_lower <- effect_size - 1.96 * effect_se
+  ci_upper <- effect_size + 1.96 * effect_se
+  
+  # Convert to percentage points for interpretation
+  effect_size_pp <- round(effect_size * 100, 2)
+  ci_lower_pp <- round(ci_lower * 100, 2)
+  ci_upper_pp <- round(ci_upper * 100, 2)
+  
+  # Calculate odds ratio and CI for reporting
+  or <- exp(effect_size)
+  or_lower <- exp(ci_lower)
+  or_upper <- exp(ci_upper)
+  
+  # Save this info
+  effect_info <- list(
+    effect_size = effect_size,
+    effect_size_pp = effect_size_pp,
+    ci_lower = ci_lower,
+    ci_upper = ci_upper,
+    ci_lower_pp = ci_lower_pp,
+    ci_upper_pp = ci_upper_pp,
+    p_value = p_value,
+    or = or,
+    or_lower = or_lower,
+    or_upper = or_upper
+  )
+  
+  save(effect_info, file="effect_size_info.RData")
+  
+  cat("Depression Effect Summary:\n")
+  cat(sprintf("Effect: %.2f percentage points per SD increase in depression (95%% CI: %.2f to %.2f)\n", 
+            effect_size_pp, ci_lower_pp, ci_upper_pp))
+  cat(sprintf("Odds Ratio: %.3f (95%% CI: %.3f to %.3f)\n", 
+            or, or_lower, or_upper))
+  cat(sprintf("P-value: %.4f\n", p_value))
+} else {
+  # For models with smooth depression effect
+  smooth_p <- summary(best_model)$s.table["s(depr_prop_std)", "p-value"]
+  cat("Non-linear effect of depression (p =", sprintf("%.4f", smooth_p), ")\n")
+}
 
 cat("Analysis complete. Objects saved for R Markdown report.\n")
 cat("Best model according to AIC:", best_model_name, "\n")

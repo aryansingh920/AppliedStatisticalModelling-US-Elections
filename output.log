@@ -1,0 +1,58 @@
+Loading required package: nlme
+This is mgcv 1.9-3. For overview type 'help("mgcv-package")'.
+Linking to GEOS 3.13.0, GDAL 3.8.5, PROJ 9.5.1; sf_use_s2() is TRUE
+Loading required package: viridisLite
+
+Method: fREML   Optimizer: perf chol
+$grad
+[1] -7.678480e-10  2.605961e-04
+
+$hess
+             [,1]         [,2]
+[1,] 6.487036e+00 1.335821e-05
+[2,] 1.335821e-05 2.448441e+01
+
+Model rank =  66 / 66 
+
+Basis dimension (k) checking results. Low p-value (k-index<1) may
+indicate that k is too low, especially if edf is close to k'.
+
+                 k' edf k-index p-value
+s(depr_prop_std) 14  14    0.92    0.15
+s(STNAME)        50  49      NA      NA
+
+Method: fREML   Optimizer: perf chol
+$grad
+[1] 1.587393e-08 1.402446e-06
+
+$hess
+            [,1]        [,2]
+[1,]  0.29104792 -0.09415333
+[2,] -0.09415333 16.95634550
+
+Model rank =  66 / 66 
+
+Basis dimension (k) checking results. Low p-value (k-index<1) may
+indicate that k is too low, especially if edf is close to k'.
+
+                    k'   edf k-index p-value  
+s(depr_prop_std) 14.00  2.02    0.95    0.06 .
+s(STNAME)        50.00 42.80      NA      NA  
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+Overdispersion check (should be close to 1): 1796.964 
+Overdispersion detected, quasi-likelihood model fitted
+Using quasi-likelihood models due to overdispersion. AIC/BIC not applicable.
+Selected states for slope visualization: New Mexico, West Virginia, Hawaii, Michigan, Wisconsin, Louisiana, Ohio, Arkansas, Indiana 
+Warning message:
+Using `size` aesthetic for lines was deprecated in ggplot2 3.4.0.
+ℹ Please use `linewidth` instead. 
+`geom_smooth()` using formula = 'y ~ x'
+`geom_smooth()` using formula = 'y ~ x'
+`geom_smooth()` using formula = 'y ~ x'
+Non-linear effect of depression (p = 0.0000 )
+Analysis complete. Objects saved for R Markdown report.
+Best model according to AIC: m_smooth_depr2 
+State selection for random slopes plot:  New Mexico, West Virginia, Hawaii, Michigan, Wisconsin, Louisiana, Ohio, Arkansas, Indiana 
+Overdispersion check ratio:  1796.964 
+(base) aryansingh@Aryans-MacBook-Air asm-final % 
